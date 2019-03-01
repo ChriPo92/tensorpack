@@ -11,6 +11,8 @@ numpy = "*"
 opencv-python = "*"
 tensorpack = {editable = true,path = "."}
 horovod = "*"
+scipy = "*"
+python-prctl = "*"
 
 [requires]
 python_version = "3.6"

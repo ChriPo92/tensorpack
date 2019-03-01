@@ -350,6 +350,7 @@ def get_train_dataflow():
 
             # Apply augmentation on polygon coordinates.
             # And produce one image-sized binary mask per box.
+            # TODO: change this to add support for binary input masks instead of polygons
             masks = []
             width_height = np.asarray([width, height], dtype=np.float32)
             for polys in segmentation:

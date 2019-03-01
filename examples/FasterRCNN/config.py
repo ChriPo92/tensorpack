@@ -82,9 +82,9 @@ _C.MODE_FPN = False
 # dataset -----------------------
 _C.DATA.BASEDIR = '/path/to/your/DATA/DIR'
 # All TRAIN dataset will be concatenated for training.
-_C.DATA.TRAIN = ('train2014', 'valminusminival2014')   # i.e. trainval35k, AKA train2017
+_C.DATA.TRAIN = ('train2017')   # i.e. trainval35k, AKA train2017
 # Each VAL dataset will be evaluated separately (instead of concatenated)
-_C.DATA.VAL = ('minival2014', )  # AKA val2017
+_C.DATA.VAL = ('val2017', )  # AKA val2017
 # This two config will be populated later by the dataset loader:
 _C.DATA.NUM_CATEGORY = 0  # without the background class (e.g., 80 for COCO)
 _C.DATA.CLASS_NAMES = []  # NUM_CLASS (NUM_CATEGORY+1) strings, the first is "BG".
@@ -132,8 +132,8 @@ _C.TRAIN.EVAL_PERIOD = 25  # period (epochs) to run evaluation
 
 # preprocessing --------------------
 # Alternative old (worse & faster) setting: 600
-_C.PREPROC.TRAIN_SHORT_EDGE_SIZE = [800, 800]  # [min, max] to sample from
-_C.PREPROC.TEST_SHORT_EDGE_SIZE = 800
+_C.PREPROC.TRAIN_SHORT_EDGE_SIZE = [480, 640]  # [min, max] to sample from
+_C.PREPROC.TEST_SHORT_EDGE_SIZE = 640
 _C.PREPROC.MAX_SIZE = 1333
 # mean and std in RGB order.
 # Un-scaled version: [0.485, 0.456, 0.406], [0.229, 0.224, 0.225]
@@ -142,7 +142,7 @@ _C.PREPROC.PIXEL_STD = [58.395, 57.12, 57.375]
 
 # anchors -------------------------
 _C.RPN.ANCHOR_STRIDE = 16
-_C.RPN.ANCHOR_SIZES = (32, 64, 128, 256, 512)   # sqrtarea of the anchor box
+_C.RPN.ANCHOR_SIZES = (20, 40, 80, 160, 320)   # sqrtarea of the anchor box
 _C.RPN.ANCHOR_RATIOS = (0.5, 1., 2.)
 _C.RPN.POSITIVE_ANCHOR_THRESH = 0.7
 _C.RPN.NEGATIVE_ANCHOR_THRESH = 0.3
