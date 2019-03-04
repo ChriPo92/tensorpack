@@ -20,7 +20,7 @@ from tensorpack.utils import logger
 from tensorpack.utils.utils import get_tqdm
 
 from common import CustomResize, clip_boxes
-from data import get_eval_dataflow
+from data import get_eval_dataflow, get_eval_dataflow_YCBV
 from dataset import DetectionDataset
 from config import config as cfg
 
@@ -171,7 +171,7 @@ def multithread_predict_dataflow(dataflows, model_funcs):
         all_results = list(itertools.chain(*[fut.result() for fut in futures]))
         return all_results
 
-
+# TODO: Make this runnable with YCBV
 class EvalCallback(Callback):
     """
     A callback that runs evaluation once a while.
@@ -194,7 +194,7 @@ class EvalCallback(Callback):
             # Use two predictor threads per GPU to get better throughput
             self.num_predictor = num_gpu if buggy_tf else num_gpu * 2
             self.predictors = [self._build_predictor(k % num_gpu) for k in range(self.num_predictor)]
-            self.dataflows = [get_eval_dataflow(self._eval_dataset,
+            self.dataflows = [get_eval_dataflow_YCBV(self._eval_dataset,
                                                 shard=k, num_shards=self.num_predictor)
                               for k in range(self.num_predictor)]
         else:
@@ -203,7 +203,7 @@ class EvalCallback(Callback):
             self._horovod_run_eval = hvd.rank() == hvd.local_rank()
             if self._horovod_run_eval:
                 self.predictor = self._build_predictor(0)
-                self.dataflow = get_eval_dataflow(self._eval_dataset,
+                self.dataflow = get_eval_dataflow_YCBV(self._eval_dataset,
                                                   shard=hvd.local_rank(), num_shards=hvd.local_size())
 
             self.barrier = hvd.allreduce(tf.random_normal(shape=[1]))

@@ -24,8 +24,8 @@ class YCBVDetectionDataset:
         """
         self.num_category = cfg.DATA.NUM_CATEGORY = 21
         self.num_classes = self.num_category + 1
-        self.image_sets = os.path.join(cfg.DATA.BASEDIR, "image_sets/")
-        self.image_dir = os.path.join(cfg.DATA.BASEDIR, "data/")
+        self.image_sets = os.path.join(os.path.expanduser(cfg.DATA.BASEDIR), "image_sets/")
+        self.image_dir = os.path.join(os.path.expanduser(cfg.DATA.BASEDIR), "data/")
         classes_dict = self.load_id_classes_dict()
         class_names = []
         self.YCB_id_to_category_id = {}
@@ -55,7 +55,7 @@ class YCBVDetectionDataset:
         return id_class
 
 
-    def load_training_roidbs(self, names):
+    def load_training_image_ids(self, names):
         """
         Args:
             names (list[str]): name of the training datasets, e.g.  ['train2014', 'valminusminival2014']
@@ -79,11 +79,24 @@ class YCBVDetectionDataset:
             either convert it, or the augmentation will need to be changed or skipped accordingly.
 
             Include this field only if training Mask R-CNN.
+        depth: str, full path to the depth image
+            Include this field only if training Mask R-CNN with PointNet Pose estimation
+        pose: [k, 4, 4] numpy array that represents the pose of each masked object
+            Include this field only if training Mask R-CNN with PointNet Pose estimation
+        intrinsic_matrix: [3, 3] numpy array that represents the intrinsic matrix of the image
+            Include this field only if training Mask R-CNN with PointNet Pose estimation
         """
-        return COCODetection.load_many(
-            cfg.DATA.BASEDIR, names, add_gt=True, add_mask=cfg.MODE_MASK)
+        assert names in ["train", "trainval"]
+        img_id_path = os.path.join(self.image_sets, "%s.txt" % names)
+        l = []
+        with timed_operation('Load Groundtruth Boxes and Masks for {}'.format(names)):
+            with open(img_id_path) as f:
+                for line in tqdm.tqdm(f):
+                    img_id = line[:-1]
+                    l.append(img_id)
+        return l
 
-    def load_inference_roidbs(self, name):
+    def load_inference_image_ids(self, name):
         """
         Args:
             name (str): name of one inference dataset, e.g. 'minival2014'
@@ -97,7 +110,17 @@ class YCBVDetectionDataset:
             file_name (str): full path to the image
             image_id (str): an id for the image. The inference results will be stored with this id.
         """
-        return COCODetection.load_many(cfg.DATA.BASEDIR, name, add_gt=False)
+        assert name in ["val", "minival"]
+        img_id_path = os.path.join(self.image_sets, "%s.txt" % name)
+        l = []
+        with timed_operation('Load Groundtruth Boxes and Masks for {}'.format(name)):
+            with open(img_id_path) as f:
+                for line in tqdm.tqdm(f):
+                    img_id = line[:-1]
+                    path = self.file_path_from_id(img_id, "color.png")
+                    l.append(img_id)
+        return l
+
 
     def eval_or_save_inference_results(self, results, dataset, output=None):
         """
@@ -117,24 +140,7 @@ class YCBVDetectionDataset:
         Returns:
             dict: the evaluation results.
         """
-        continuous_id_to_COCO_id = {v: k for k, v in COCODetection.COCO_id_to_category_id.items()}
-        for res in results:
-            # convert to COCO's incontinuous category id
-            res['category_id'] = continuous_id_to_COCO_id[res['category_id']]
-            # COCO expects results in xywh format
-            box = res['bbox']
-            box[2] -= box[0]
-            box[3] -= box[1]
-            res['bbox'] = [round(float(x), 3) for x in box]
-
-        assert output is not None, "COCO evaluation requires an output file!"
-        with open(output, 'w') as f:
-            json.dump(results, f)
-        if len(results):
-            # sometimes may crash if the results are empty?
-            return COCODetection(cfg.DATA.BASEDIR, dataset).print_coco_metrics(output)
-        else:
-            return {}
+        raise NotImplementedError
 
     # code for singleton:
     _instance = None
@@ -151,12 +157,43 @@ class YCBVDetectionDataset:
         return full_path
 
     def load_single_roidb(self, image_id):
-        image = self.load_image(image_id)
-        depth = self.load_depth(image_id)
-        bbox = self.load_box(image_id)
+        """
+        Loads a single dict of all GT Image Information
+        :param image_id:
+        :return: {
+        file_name: str,
+        boxes: [k, (x_0, y_0, x_1, y_1)],
+        class: [k],
+        is_crowd: [k x False],
+        segmentation: [k, h(=480), w(=640)],
+        depth: str,
+        pose: [k, 4, 4],
+        intrinsic_matrix: [3, 3]
+        }
+        """
         meta = self.load_meta(image_id)
+        class_ids = np.squeeze(meta["cls_indexes"])
+        # image = self.load_image(image_id)
+        # depth = self.load_depth(image_id)
+        image_path = self.file_path_from_id(image_id, "color.png")
+        depth_path = self.file_path_from_id(image_id, "depth.png")
+        # bbox = self.file_path_from_id(image_id, "box.txt")
+        bbox = self.load_box(image_id, meta)
         # mask is here a boolean array of masks
-        mask = self.load_mask(image_id)
+        mask = self.load_mask(image_id, meta)
+        # mask = self.file_path_from_id(image_id, "label.png")
+        pose = self.load_pose(meta)
+        int_matrix = self.load_intr_matrix(meta)
+
+        ret = {"file_name": image_path,
+        "boxes": bbox,
+        "class": class_ids,
+        "is_crowd": np.asarray([0 for _ in range(len(class_ids))], dtype="uint8"),
+        "segmentation": mask,
+        "depth": depth_path,
+        "pose": pose,
+        "intrinsic_matrix": int_matrix}
+        return ret
 
     def load_image(self, image_id):
         """
@@ -181,7 +218,7 @@ class YCBVDetectionDataset:
         scaled_depth = np.expand_dims(depth / 10000., 2)
         return scaled_depth
 
-    def load_box(self, image_id):
+    def load_box(self, image_id, meta):
         """
         Loads the bounding boxes of the corresponding classes
         :param image_id:
@@ -191,21 +228,21 @@ class YCBVDetectionDataset:
             [k, 2] = x_1
             [k, 3] = y_1
         """
-        meta = self.load_meta(image_id)
-        category_ids = meta["cls_indexes"]
-        idx = np.argsort(category_ids)
-        sorted_cat_ids = category_ids[idx]
+        # meta = self.load_meta(image_id)
+        category_ids = np.squeeze(meta["cls_indexes"])
+        # idx = np.argsort(category_ids)
+        # sorted_cat_ids = category_ids[idx]
         box_path = self.file_path_from_id(image_id, "box.txt")
         box_dict = {}
         with open(box_path, "r") as f:
             for i, line in enumerate(f):
                 parts = line.split()
-                cat_name = parts[0][4:-1]
+                cat_name = parts[0][4:]
                 cat_id = self.category_name_to_category_id[cat_name]
                 box = np.array(parts[1:], dtype=np.float32)
                 box_dict[cat_id] = box
         bboxs = []
-        for key in sorted(box_dict.keys()):
+        for key in category_ids:
             bboxs.append(box_dict[key])
         return np.array(bboxs)
 
@@ -227,6 +264,38 @@ class YCBVDetectionDataset:
         meta = scio.loadmat(path)
         return meta
 
+    def load_mask(self, image_id, meta):
+        """
+        Loads an array of binary masks for the image id
+        :param image_id:
+        :return: [N, img_shape[0], img_shape[1]
+        """
+        cls_idx = np.squeeze(meta["cls_indexes"])
+        mask_path = self.file_path_from_id(image_id, "label.png")
+        ann = cv2.imread(mask_path, -1)
+        masks = []
+        for i in cls_idx:
+            masks.append((ann == i))
+        return np.asarray(masks, dtype="uint8")
+
+    def load_pose(self, meta):
+        """
+        loads and transforms the poses for all objects in the image
+        :param meta:
+        :return: [N, 4, 4] Poses
+        """
+        # first repeats [0, 0, 0, 1] N times to create an array of
+        # shape [1, 4, N] and then concatenates it with the first
+        # dimension of the poses matrix to create matrix of shape
+        # [4, 4, N] where the last row is always [0, 0, 0, 1]
+        poses = np.concatenate((meta["poses"],
+                                np.tile(np.array([[0], [0], [0], [1]]),
+                                        (1, 1, meta["poses"].shape[2]))))
+        poses = np.transpose(poses, [2, 0, 1])
+        return poses
+
+    def load_intr_matrix(self, meta):
+        return meta["intrinsic_matrix"]
 
     def __new__(cls):
         if not isinstance(cls._instance, cls):

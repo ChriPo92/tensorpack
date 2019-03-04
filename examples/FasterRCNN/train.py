@@ -23,8 +23,9 @@ import model_frcnn
 import model_mrcnn
 from basemodel import image_preprocess, resnet_c4_backbone, resnet_conv5, resnet_fpn_backbone
 from dataset import DetectionDataset
+from YCBV_dataset import YCBVDetectionDataset
 from config import finalize_configs, config as cfg
-from data import get_all_anchors, get_all_anchors_fpn, get_eval_dataflow, get_train_dataflow
+from data import get_all_anchors, get_all_anchors_fpn, get_eval_dataflow, get_train_dataflow, get_train_dataflow_YCBV
 from eval import DetectionResult, predict_image, multithread_predict_dataflow, EvalCallback
 from model_box import RPNAnchors, clip_boxes, crop_and_resize, roi_align
 from model_cascade import CascadeRCNNHead
@@ -418,7 +419,7 @@ if __name__ == '__main__':
         cfg.update_args(args.config)
 
     MODEL = ResNetFPNModel() if cfg.MODE_FPN else ResNetC4Model()
-    DetectionDataset()  # initialize the config with information from our dataset
+    YCBVDetectionDataset()  # initialize the config with information from our dataset
 
     if args.visualize or args.evaluate or args.predict:
         if not tf.test.is_gpu_available():
@@ -468,7 +469,7 @@ if __name__ == '__main__':
                 (steps * factor // stepnum, cfg.TRAIN.BASE_LR * mult))
         logger.info("Warm Up Schedule (steps, value): " + str(warmup_schedule))
         logger.info("LR Schedule (epochs, value): " + str(lr_schedule))
-        train_dataflow = get_train_dataflow()
+        train_dataflow = get_train_dataflow_YCBV()
         # This is what's commonly referred to as "epochs"
         total_passes = cfg.TRAIN.LR_SCHEDULE[-1] * 8 / train_dataflow.size()
         logger.info("Total passes of the training set is: {:.5g}".format(total_passes))
@@ -484,10 +485,10 @@ if __name__ == '__main__':
             PeakMemoryTracker(),
             EstimatedTimeLeft(median=True),
             SessionRunTimeout(60000).set_chief_only(True),   # 1 minute timeout
-        ] + [
-            EvalCallback(dataset, *MODEL.get_inference_tensor_names(), args.logdir)
-            for dataset in cfg.DATA.VAL
-        ]
+        ] #+ [
+        #     EvalCallback(dataset, *MODEL.get_inference_tensor_names(), args.logdir)
+        #     for dataset in cfg.DATA.VAL
+        # ]
         if not is_horovod:
             callbacks.append(GPUUtilizationTracker())
 
